@@ -13,13 +13,14 @@ from troposphere.ecs import (AwsvpcConfiguration, ContainerDefinition,
                              DeploymentConfiguration, Environment,
                              LoadBalancer, LogConfiguration,
                              NetworkConfiguration, PlacementStrategy,
-                             PortMapping, Service, TaskDefinition)
+                             PortMapping, Service, TaskDefinition, Secret)
 from troposphere.elasticloadbalancingv2 import Action, Certificate, Listener
 from troposphere.elasticloadbalancingv2 import LoadBalancer as ALBLoadBalancer
 from troposphere.elasticloadbalancingv2 import (Matcher, RedirectConfig,
                                                 TargetGroup,
                                                 TargetGroupAttribute)
-from troposphere.iam import Role
+from troposphere.iam import Role, Policy
+from troposphere.secretsmanager import Secret as SecretResource
 
 from cloudlift.config import region as region_service
 from cloudlift.config import get_account_id
@@ -178,6 +179,12 @@ service is down',
                 )
             ]
 
+        sm = SecretResource("secretManager",
+                            Name='{}-{}'.format(self.env, service_name))
+        self.template.add_resource(sm)
+        container_definition_arguments['Secrets'] = [Secret(Name=service_name,
+                                                            ValueFrom=Ref(sm))]
+
         if config['command'] is not None:
             container_definition_arguments['Command'] = [config['command']]
 
@@ -195,6 +202,37 @@ service is down',
                 ]
             )
         ))
+        execution_role_policy = Policy(
+            "executionRolePolicy",
+            PolicyName="{}-{}-execution-policy".format(self.env, service_name),
+            PolicyDocument={
+                "Statement": [
+                    {
+                        "Action": [
+                            "secretsmanager:GetSecretValue",
+                            "kms:Decrypt"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": ["arn:aws:kms:*",
+                                     Ref(sm)]
+                    }
+                ]
+            }
+        )
+        execution_role = Role(
+            service_name + "ExecutionRole",
+            AssumeRolePolicyDocument=PolicyDocument(
+                Statement=[
+                    Statement(
+                        Effect=Allow,
+                        Action=[AssumeRole],
+                        Principal=Principal("Service", ["ecs-tasks.amazonaws.com"])
+                    )
+                ]
+            ),
+            Policies=[execution_role_policy]
+        )
+        self.template.add_resource(execution_role)
 
         launch_type_td = {}
         if launch_type == self.LAUNCH_TYPE_FARGATE:
@@ -211,6 +249,7 @@ service is down',
             Family=service_name + "Family",
             ContainerDefinitions=[cd],
             TaskRoleArn=Ref(task_role),
+            ExecutionRoleArn=Ref(execution_role),
             **launch_type_td
         )
 
