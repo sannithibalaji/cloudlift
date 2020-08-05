@@ -8,6 +8,8 @@ from terminaltables import SingleTable
 from cloudlift.config import ParameterStore
 from cloudlift.deployment.ecs import DeployAction
 from cloudlift.config.logging import log_bold, log_err, log_intent, log_with_color
+from datetime import datetime
+import boto3
 
 
 def deploy_new_version(client, cluster_name, ecs_service_name,
@@ -104,9 +106,29 @@ def wait_for_finish(action, existing_events, color, deploy_end_time):
             color
         )
         waiting = not is_deployed(service['deployments']) and not service.errors
-        waiting = not action.is_deployed(service) and not service.errors
         if time() > deploy_end_time:
             log_err("Deploy timed out!")
+            cloudwatch_client = boto3.client('cloudwatch')
+            cloudwatch_client.put_metric_data(
+                Namespace='ECS/DeploymentMetrics',
+                MetricData=[
+                    {
+                        "MetricName": 'FailedCloudliftDeployments',
+                        "Value": 1,
+                        "Timestamp": datetime.utcnow(),
+                        "Dimensions": [
+                            {
+                                'Name': 'ClusterName',
+                                'Value': action.cluster_name
+                            },
+                            {
+                                'Name': 'ServiceName',
+                                'Value': action.service_name
+                            }
+                        ]
+                    }
+                ]
+            )
             return False
     if service.errors:
         log_err(str(service.errors))
