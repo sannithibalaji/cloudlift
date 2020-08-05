@@ -113,7 +113,7 @@ def wait_for_finish(action, existing_events, color, deploy_end_time):
                 Namespace='ECS/DeploymentMetrics',
                 MetricData=[
                     {
-                        "MetricName": 'FailedCloudliftDeployments',
+                        "MetricName": 'TimedOutCloudliftDeployments',
                         "Value": 1,
                         "Timestamp": datetime.utcnow(),
                         "Dimensions": [
