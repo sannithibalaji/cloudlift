@@ -104,7 +104,7 @@ def edit_config(name, environment):
 @cli.command()
 @_require_environment
 @_require_name
-@click.option('--timeout_seconds', default=180, help='The deployment timeout')
+@click.option('--timeout_seconds', default=600, help='The deployment timeout')
 @click.option('--version', default=None,
               help='local image version tag')
 @click.option("--build-arg", type=(str, str), multiple=True, help="These args are passed to docker build command "
